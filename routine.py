@@ -86,14 +86,12 @@ def get_music(response_type: str = 'str') -> str:
     RP_URL = "https://api.radioparadise.com/api/nowplaying_list_v2022?chan=0&source=The%20Main%20Mix&player_id=&sync_id=chan_0&type=channel&mode=wip-channel&list_num=4"
     response = get_json(RP_URL, "get music")
     if response:
-        json_response = response.json()
-        if json_response:
-            val = json_response["song"]
-            item = val[0]
-            if response_type == "str":
-                return (f"Song:{item['title']} Artist:{item['artist']} Album:{item['album']} Year:{item['year']} Rating:{item['listener_rating']}")
-            else:
-                return item
+        val = response["song"]
+        item = val[0]
+        if response_type == "str":
+            return (f"Song:{item['title']} Artist:{item['artist']} Album:{item['album']} Year:{item['year']} Rating:{item['listener_rating']}")
+        else:
+            return item
     return
 
 
