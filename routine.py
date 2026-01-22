@@ -46,22 +46,26 @@ esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
 status_pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2)
 wifi = WiFiManager(esp, ssid, password, status_pixel=status_pixel)
 
+
+def get_json(JSON_URL: str, error_msg: str):
+    """ simplify getting the URL
+    """
+    while True:
+        try:
+            print("Fetching json from", TIME_API)
+            response = wifi.get(TIME_API)
+            return response.json()
+        except OSError as e:
+            print(f"Failed to {error_msg} retrying\n", e)
+            continue
+
+
 def set_time():
     """ Routine to set the time
     """
     the_rtc = rtc.RTC()
 
-    response = None
-    while True:
-        try:
-            print("Fetching json from", TIME_API)
-            response = wifi.get(TIME_API)
-            break
-        except OSError as e:
-            print("Failed to get data, retrying\n", e)
-            continue
-
-    json = response.json()
+    json = get_json(TIME_API, "get time")
     current_time = json["datetime"]
     the_date, the_time = current_time.split("T")
     year, month, mday = (int(x) for x in the_date.split("-"))
@@ -75,19 +79,12 @@ def set_time():
     print(now)
     the_rtc.datetime = now
 
+
 def get_music(response_type: str = 'str') -> str:
     """ retrieve the music and return a string
     """
     RP_URL = "https://api.radioparadise.com/api/nowplaying_list_v2022?chan=0&source=The%20Main%20Mix&player_id=&sync_id=chan_0&type=channel&mode=wip-channel&list_num=4"
-    response = None
-    while True:
-        try:
-            print("Fetching RP json")
-            response = requests.get(RP_URL)
-            break
-        except OSError as e:
-            print("Failed to get music, retrying\n", e)
-            return
+    response = get_json(RP_URL, "get music")
     if response:
         json_response = response.json()
         if json_response:
