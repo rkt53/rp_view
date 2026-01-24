@@ -21,16 +21,8 @@ from analogio import AnalogIn
 # -- additional imports -- #
 # import adafruit_connection_manager  # -- appear unused
 # import adafruit_requests.  # -- appear unused
-import rtc 
-from digitalio import DigitalInOut
+import rtc
 from os import getenv
-
-# Use these imports for adafruit_esp32spi version 11.0.0 and up.
-# Note that frozen libraries may not be up to date.
-# import adafruit_esp32spi
-# from adafruit_esp32spi.wifimanager import WiFiManager
-from adafruit_esp32spi import adafruit_esp32spi
-from adafruit_esp32spi.adafruit_esp32spi_wifimanager import WiFiManager
 
 # ------------- Constants ------------- #
 
@@ -152,7 +144,7 @@ except ValueError:
 # ------------- Screen Setup ------------- #
 pyportal = PyPortal()
 pyportal.set_background("/images/loading.bmp")  # Display an image until the loop starts
-pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=1)
+# NeoPixel will be initialized later with WiFi setup
 
 # Touchscreen setup  
 display = board.DISPLAY
@@ -368,28 +360,16 @@ if not TESTING:
     ssid = getenv("CIRCUITPY_WIFI_SSID")
     password = getenv("CIRCUITPY_WIFI_PASSWORD")
 
-    print("ESP32 local time")
+    print("Connecting to WiFi...")
 
-    # If you are using a board with pre-defined ESP32 Pins:
-    esp32_cs = DigitalInOut(board.ESP_CS)
-    esp32_ready = DigitalInOut(board.ESP_BUSY)
-    esp32_reset = DigitalInOut(board.ESP_RESET)
-
-    # If you have an externally connected ESP32:
-    # esp32_cs = DigitalInOut(board.D9)
-    # esp32_ready = DigitalInOut(board.D10)
-    # esp32_reset = DigitalInOut(board.D5)
-
-    # Secondary (SCK1) SPI used to connect to WiFi board on Arduino Nano Connect RP2040
-    if "SCK1" in dir(board):
-        spi = busio.SPI(board.SCK1, board.MOSI1, board.MISO1)
-    else:
-        spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
-    esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
-
-    """Use below for Most Boards"""
-    status_pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2)
-    wifi = WiFiManager(esp, ssid, password, status_pixel=status_pixel)
+    # PyPortal handles ESP32 initialization automatically
+    # Just need to connect using the built-in network
+    try:
+        pyportal.network.connect(ssid, password)
+        print("Connected to WiFi!")
+    except (RuntimeError, ConnectionError) as e:
+        print(f"Failed to connect to WiFi: {e}")
+        raise
 
 
 def get_json(json_url: str, error_msg: str):
@@ -399,7 +379,7 @@ def get_json(json_url: str, error_msg: str):
     while attempt < 3:
         try:
             # print("Fetching json from", json_url)
-            response = wifi.get(json_url)
+            response = pyportal.network.requests.get(json_url)
             return response.json()
         except OSError as e:
             print(f"Failed to {error_msg} retrying {e}\n")
