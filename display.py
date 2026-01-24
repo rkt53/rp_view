@@ -7,7 +7,6 @@ import board
 import microcontroller
 import displayio
 import busio
-
 import neopixel
 
 import adafruit_adt7410
@@ -25,7 +24,6 @@ import rtc
 from os import getenv
 
 # ------------- Constants ------------- #
-
 
 # Hex Colors
 WHITE = 0xFFFFFF
@@ -50,6 +48,13 @@ icon = 1
 icon_name = "Ruby"
 button_mode = 1
 switch_state = 0
+
+# For add ons
+TESTING = False
+TIME_API = "http://worldtimeapi.org/api/ip"
+RP_URL = "https://api.radioparadise.com/api/nowplaying_list_v2022?chan=0&source=The%20Main%20Mix&player_id=&sync_id=chan_0&type=channel&mode=wip-channel&list_num=4"
+WEATHER = "https://api.weather.gov/stations/KOWD/observations/latest"
+
 
 # ------------- Functions ------------- #
 # Backlight function
@@ -130,6 +135,76 @@ def get_Temperature(source):
     return (celsius * 1.8) + 32
 
 
+def get_time():
+    """ return the time to display """
+    # Get the struct_time
+    time_now = time.localtime()
+    return f"{time_now.tm_hour:02d}:{time_now.tm_min:02d}"
+
+
+def get_json(json_url: str, error_msg: str):
+    """ simplify getting the URL
+    """
+    attempt = 0
+    while attempt < 3:
+        try:
+            # print("Fetching json from", json_url)
+            response = pyportal.network.requests.get(json_url)
+            return response.json()
+        except OSError as e:
+            print(f"Failed to {error_msg} retrying {e}\n")
+            attempt += 1
+            continue
+
+
+def set_time():
+    """ Routine to set the time
+    """
+
+    json = get_json(TIME_API, "get time")
+    current_time = json["datetime"]
+    the_date, the_time = current_time.split("T")
+    year, month, mday = (int(x) for x in the_date.split("-"))
+    the_time = the_time.split(".")[0]
+    hours, minutes, seconds = (int(x) for x in the_time.split(":"))
+    year_day = json["day_of_year"]
+    week_day = json["day_of_week"]
+    is_dst = json["dst"]
+
+    now = time.struct_time((year, month, mday, hours, minutes, seconds, week_day, year_day, is_dst))
+    print(now)
+    the_rtc = rtc.RTC()
+    the_rtc.datetime = now
+
+
+def get_music(response_type: str = 'str') -> str:
+    """ retrieve the music and return a string
+    """
+    response = get_json(RP_URL, "get music")
+    if response:
+        val = response["song"]
+        item = val[0]
+        if response_type == "str":
+            return (f"Song:{item['title']} Artist:{item['artist']} Album:{item['album']} Year:{item['year']} Rating:{item['listener_rating']}")
+        elif response_type == "simple":
+            return (f"{item['title']} {item['artist']} {item['album']}")
+        else:
+            return item
+    return
+
+
+last_time = time.time()
+set_time()
+
+def interval_elapsed(interval: int = 30):
+    """ check if interval elapsed """
+    global last_time
+    delta = time.time() - last_time
+    if delta > interval:
+        last_time = time.time()
+        return True
+    return False
+
 # ------------- Inputs and Outputs Setup ------------- #
 light_sensor = AnalogIn(board.LIGHT)
 try:
@@ -158,7 +233,7 @@ set_backlight(0.3)
 
 # We want three buttons across the top of the screen
 TAB_BUTTON_Y = 0
-TAB_BUTTON_HEIGHT = 20  # previously 40
+TAB_BUTTON_HEIGHT = 40  # previously 40
 TAB_BUTTON_WIDTH = int(screen_width / 3)
 
 # We want two big buttons at the bottom of the screen
@@ -175,6 +250,21 @@ ts = adafruit_touchscreen.Touchscreen(
     calibration=((5200, 59000), (5800, 57000)),
     size=(screen_width, screen_height),
 )
+
+# ------------- WifI Connection ------------- #
+ssid = getenv("CIRCUITPY_WIFI_SSID")
+password = getenv("CIRCUITPY_WIFI_PASSWORD")
+
+print("Connecting to WiFi...")
+
+try:
+    pyportal.network.connect()
+    print("Connected to WiFi!")
+except (RuntimeError, ConnectionError) as e:
+    print(f"Failed to connect to WiFi: {e}")
+    raise
+
+
 
 # ------------- Display Groups ------------- #
 splash = displayio.Group()  # The Main Display Group
@@ -326,10 +416,8 @@ layerVisibility("hide", splash, view3)
 # Update out Labels with display text.
 text_box(
     time_data,
-    TABS_Y,
-    "Time {}.".format(
-        get_time()
-    ),
+    TABS_Y + 20,
+    "Time {}.".format(get_time()),
     30,
 )
 
@@ -337,104 +425,16 @@ text_box(
 
 text_box(
     sensors_label,
-    TABS_Y,
+    TABS_Y + 20,
     "This screen can display sensor readings and tap Sound to play a WAV file.",
     28,
 )
 
+# ------------- Initialization ------------- #
 board.DISPLAY.root_group = splash
-##
-##
-## start loading
-##
-##
-##
-TESTING = False
-TIME_API = "http://worldtimeapi.org/api/ip"
-RP_URL = "https://api.radioparadise.com/api/nowplaying_list_v2022?chan=0&source=The%20Main%20Mix&player_id=&sync_id=chan_0&type=channel&mode=wip-channel&list_num=4"
-WEATHER = "https://api.weather.gov/stations/KOWD/observations/latest"
-
-
-# --------- Set up Wifi Connection ---------- #
-if not TESTING:
-    ssid = getenv("CIRCUITPY_WIFI_SSID")
-    password = getenv("CIRCUITPY_WIFI_PASSWORD")
-
-    print("Connecting to WiFi...")
-
-    # PyPortal handles ESP32 initialization automatically
-    # Just need to connect using the built-in network
-    try:
-        pyportal.network.connect(ssid, password)
-        print("Connected to WiFi!")
-    except (RuntimeError, ConnectionError) as e:
-        print(f"Failed to connect to WiFi: {e}")
-        raise
-
-
-def get_json(json_url: str, error_msg: str):
-    """ simplify getting the URL
-    """
-    attempt = 0
-    while attempt < 3:
-        try:
-            # print("Fetching json from", json_url)
-            response = pyportal.network.requests.get(json_url)
-            return response.json()
-        except OSError as e:
-            print(f"Failed to {error_msg} retrying {e}\n")
-            attempt += 1
-            continue
-
-
-def set_time():
-    """ Routine to set the time
-    """
-
-    json = get_json(TIME_API, "get time")
-    current_time = json["datetime"]
-    the_date, the_time = current_time.split("T")
-    year, month, mday = (int(x) for x in the_date.split("-"))
-    the_time = the_time.split(".")[0]
-    hours, minutes, seconds = (int(x) for x in the_time.split(":"))
-    year_day = json["day_of_year"]
-    week_day = json["day_of_week"]
-    is_dst = json["dst"]
-
-    now = time.struct_time((year, month, mday, hours, minutes, seconds, week_day, year_day, is_dst))
-    print(now)
-    the_rtc = rtc.RTC()
-    the_rtc.datetime = now
-
-
-def get_music(response_type: str = 'str') -> str:
-    """ retrieve the music and return a string
-    """
-    response = get_json(RP_URL, "get music")
-    if response:
-        val = response["song"]
-        item = val[0]
-        if response_type == "str":
-            return (f"Song:{item['title']} Artist:{item['artist']} Album:{item['album']} Year:{item['year']} Rating:{item['listener_rating']}")
-        elif response_type == "simple":
-            return (f"{item['title']} {item['artist']} {item['album']}")
-        else:
-            return item
-    return
 
 
 
-def get_time() -> str:
-    """ return the time to display """
-    # Get the struct_time
-    time_now = time.localtime()
-    return f"{time_now.tm_hour:02d}:{time_now.tm_min:02d}"
-
-
-
-set_time()
-
-###
 # ------------- Code Loop ------------- #
 while True:
     touch = ts.touch_point
@@ -442,10 +442,13 @@ while True:
     sensor_data.text = "Touch: {}\nLight: {}\nTemp: {:.0f}°F".format(
         touch, light, get_Temperature(adt)
         )
-    time_data.text = get_time()
-    music_data.text = get_music("simple")
-    ## need to implement a checking for update interval
-    time.sleep(30)
+    time_data.text = "Time {}.".format(get_time())
+
+    # Only update music data at specified interval (default 30 seconds)
+    if interval_elapsed(30):
+        music_data.text = get_music("simple")
+
+    time.sleep(0.1)  # Short sleep for responsive UI
 
 
 
