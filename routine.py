@@ -4,6 +4,7 @@ from os import getenv
 TESTING = True
 TIME_API = "http://worldtimeapi.org/api/ip"
 RP_URL = "https://api.radioparadise.com/api/nowplaying_list_v2022?chan=0&source=The%20Main%20Mix&player_id=&sync_id=chan_0&type=channel&mode=wip-channel&list_num=4"
+WEATHER = "https://api.weather.gov/stations/KOWD/observations/latest"
 
 if not TESTING:
     import adafruit_connection_manager

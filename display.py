@@ -7,14 +7,30 @@ import board
 import microcontroller
 import displayio
 import busio
-from analogio import AnalogIn
+
 import neopixel
+
 import adafruit_adt7410
+import adafruit_touchscreen
 from adafruit_bitmap_font import bitmap_font
 from adafruit_display_text.label import Label
 from adafruit_button import Button
-import adafruit_touchscreen
 from adafruit_pyportal import PyPortal
+from analogio import AnalogIn
+
+# -- additional imports -- #
+# import adafruit_connection_manager  # -- appear unused
+# import adafruit_requests.  # -- appear unused
+import rtc 
+from digitalio import DigitalInOut
+from os import getenv
+
+# Use these imports for adafruit_esp32spi version 11.0.0 and up.
+# Note that frozen libraries may not be up to date.
+# import adafruit_esp32spi
+# from adafruit_esp32spi.wifimanager import WiFiManager
+from adafruit_esp32spi import adafruit_esp32spi
+from adafruit_esp32spi.adafruit_esp32spi_wifimanager import WiFiManager
 
 # ------------- Constants ------------- #
 
@@ -141,13 +157,16 @@ pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=1)
 # Touchscreen setup  
 display = board.DISPLAY
 # display.rotation = 270  # [ Rotate 270 ]
-screen_width = 240
-screen_height = 320
+# screen_width = 240
+# screen_height = 320
+# reverse orientation
+screen_width = 320
+screen_height = 240
 set_backlight(0.3)
 
 # We want three buttons across the top of the screen
 TAB_BUTTON_Y = 0
-TAB_BUTTON_HEIGHT = 40
+TAB_BUTTON_HEIGHT = 20  # previously 40
 TAB_BUTTON_WIDTH = int(screen_width / 3)
 
 # We want two big buttons at the bottom of the screen
@@ -188,15 +207,15 @@ font = bitmap_font.load_font("/fonts/Helvetica-Bold-16.bdf")
 font.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
 
 # Text Label Objects
-feed1_label = Label(font, text="Text Window 1", color=0xE39300)
-feed1_label.x = TABS_X
-feed1_label.y = TABS_Y
-view1.append(feed1_label)
+time_data = Label(font, text="Time Data", color=0xE39300)
+time_data.x = TABS_X + 2
+time_data.y = TABS_Y
+view1.append(time_data)
 
-feed2_label = Label(font, text="Text Window 2", color=0xFFFFFF)
-feed2_label.x = TABS_X
-feed2_label.y = TABS_Y
-view2.append(feed2_label)
+music_data = Label(font, text="Music Data", color=0xFFFFFF)
+music_data.x = TABS_X + 2
+music_data.y = TABS_Y
+view2.append(music_data)
 
 sensors_label = Label(font, text="Data View", color=0x03AD31)
 sensors_label.x = TABS_X
@@ -218,7 +237,7 @@ button_view1 = Button(
     y=0,  # Start at top
     width=TAB_BUTTON_WIDTH,  # Calculated width
     height=TAB_BUTTON_HEIGHT,  # Static height
-    label="View 1",
+    label="Time",
     label_font=font,
     label_color=0xFF7E00,
     fill_color=0x5C5B5C,
@@ -234,7 +253,7 @@ button_view2 = Button(
     y=0,
     width=TAB_BUTTON_WIDTH,
     height=TAB_BUTTON_HEIGHT,
-    label="View 2",
+    label="Music",
     label_font=font,
     label_color=0xFF7E00,
     fill_color=0x5C5B5C,
@@ -250,7 +269,7 @@ button_view3 = Button(
     y=0,
     width=TAB_BUTTON_WIDTH,
     height=TAB_BUTTON_HEIGHT,
-    label="View 3",
+    label="Sensor",
     label_font=font,
     label_color=0xFF7E00,
     fill_color=0x5C5B5C,
@@ -262,52 +281,11 @@ button_view3 = Button(
 buttons.append(button_view3)  # adding this button to the buttons group
 
 
-
 # Add all of the main buttons to the splash Group
 for b in buttons:
     splash.append(b)
 
-# Make a button to change the icon image on view2
-button_icon = Button(
-    x=150,
-    y=60,
-    width=BUTTON_WIDTH,
-    height=BUTTON_HEIGHT,
-    label="Icon",
-    label_font=font,
-    label_color=0xFFFFFF,
-    fill_color=0x8900FF,
-    outline_color=0xBC55FD,
-    selected_fill=0x5A5A5A,
-    selected_outline=0xFF6600,
-    selected_label=0x525252,
-    style=Button.ROUNDRECT,
-)
-buttons.append(button_icon)  # adding this button to the buttons group
 
-# Add this button to view2 Group
-view2.append(button_icon)
-
-# Make a button to play a sound on view2
-button_sound = Button(
-    x=150,
-    y=170,
-    width=BUTTON_WIDTH,
-    height=BUTTON_HEIGHT,
-    label="Sound",
-    label_font=font,
-    label_color=0xFFFFFF,
-    fill_color=0x8900FF,
-    outline_color=0xBC55FD,
-    selected_fill=0x5A5A5A,
-    selected_outline=0xFF6600,
-    selected_label=0x525252,
-    style=Button.ROUNDRECT,
-)
-buttons.append(button_sound)  # adding this button to the buttons group
-
-# Add this button to view2 Group
-view3.append(button_sound)
 
 # pylint: disable=global-statement
 def switch_view(what_view):
@@ -355,16 +333,15 @@ layerVisibility("hide", splash, view3)
 
 # Update out Labels with display text.
 text_box(
-    feed1_label,
+    time_data,
     TABS_Y,
-    "The text on this screen is wrapped so that all of it fits nicely into a "
-    "text box that is {} x {}.".format(
-        feed1_label.bounding_box[2], feed1_label.bounding_box[3] * 2
+    "Time {}.".format(
+        get_time()
     ),
     30,
 )
 
-text_box(feed2_label, TABS_Y, "Tap on the Icon button to meet a new friend.", 18)
+# text_box(feed2_label, TABS_Y, "Tap on the Icon button to meet a new friend.", 18)
 
 text_box(
     sensors_label,
@@ -374,16 +351,121 @@ text_box(
 )
 
 board.DISPLAY.root_group = splash
- 
+##
+##
+## start loading
+##
+##
+##
+TESTING = False
+TIME_API = "http://worldtimeapi.org/api/ip"
+RP_URL = "https://api.radioparadise.com/api/nowplaying_list_v2022?chan=0&source=The%20Main%20Mix&player_id=&sync_id=chan_0&type=channel&mode=wip-channel&list_num=4"
+WEATHER = "https://api.weather.gov/stations/KOWD/observations/latest"
 
 
+# --------- Set up Wifi Connection ---------- #
+if not TESTING:
+    ssid = getenv("CIRCUITPY_WIFI_SSID")
+    password = getenv("CIRCUITPY_WIFI_PASSWORD")
+
+    print("ESP32 local time")
+
+    # If you are using a board with pre-defined ESP32 Pins:
+    esp32_cs = DigitalInOut(board.ESP_CS)
+    esp32_ready = DigitalInOut(board.ESP_BUSY)
+    esp32_reset = DigitalInOut(board.ESP_RESET)
+
+    # If you have an externally connected ESP32:
+    # esp32_cs = DigitalInOut(board.D9)
+    # esp32_ready = DigitalInOut(board.D10)
+    # esp32_reset = DigitalInOut(board.D5)
+
+    # Secondary (SCK1) SPI used to connect to WiFi board on Arduino Nano Connect RP2040
+    if "SCK1" in dir(board):
+        spi = busio.SPI(board.SCK1, board.MOSI1, board.MISO1)
+    else:
+        spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
+    esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
+
+    """Use below for Most Boards"""
+    status_pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2)
+    wifi = WiFiManager(esp, ssid, password, status_pixel=status_pixel)
+
+
+def get_json(json_url: str, error_msg: str):
+    """ simplify getting the URL
+    """
+    attempt = 0
+    while attempt < 3:
+        try:
+            # print("Fetching json from", json_url)
+            response = wifi.get(json_url)
+            return response.json()
+        except OSError as e:
+            print(f"Failed to {error_msg} retrying {e}\n")
+            attempt += 1
+            continue
+
+
+def set_time():
+    """ Routine to set the time
+    """
+
+    json = get_json(TIME_API, "get time")
+    current_time = json["datetime"]
+    the_date, the_time = current_time.split("T")
+    year, month, mday = (int(x) for x in the_date.split("-"))
+    the_time = the_time.split(".")[0]
+    hours, minutes, seconds = (int(x) for x in the_time.split(":"))
+    year_day = json["day_of_year"]
+    week_day = json["day_of_week"]
+    is_dst = json["dst"]
+
+    now = time.struct_time((year, month, mday, hours, minutes, seconds, week_day, year_day, is_dst))
+    print(now)
+    the_rtc = rtc.RTC()
+    the_rtc.datetime = now
+
+
+def get_music(response_type: str = 'str') -> str:
+    """ retrieve the music and return a string
+    """
+    response = get_json(RP_URL, "get music")
+    if response:
+        val = response["song"]
+        item = val[0]
+        if response_type == "str":
+            return (f"Song:{item['title']} Artist:{item['artist']} Album:{item['album']} Year:{item['year']} Rating:{item['listener_rating']}")
+        elif response_type == "simple":
+            return (f"{item['title']} {item['artist']} {item['album']}")
+        else:
+            return item
+    return
+
+
+
+def get_time() -> str:
+    """ return the time to display """
+    # Get the struct_time
+    time_now = time.localtime()
+    return f"{time_now.tm_hour:02d}:{time_now.tm_min:02d}"
+
+
+
+set_time()
+
+###
 # ------------- Code Loop ------------- #
 while True:
     touch = ts.touch_point
     light = light_sensor.value
     sensor_data.text = "Touch: {}\nLight: {}\nTemp: {:.0f}°F".format(
         touch, light, get_Temperature(adt)
-    )
+        )
+    time_data.text = get_time()
+    music_data.text = get_music("simple")
+    ## need to implement a checking for update interval
+    time.sleep(30)
 
 
 
