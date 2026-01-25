@@ -218,7 +218,6 @@ except ValueError:
 # ------------- Screen Setup ------------- #
 pyportal = PyPortal()
 pyportal.set_background("/images/loading.bmp")  # Display an image until the loop starts
-# NeoPixel will be initialized later with WiFi setup
 
 # Touchscreen setup  
 display = board.DISPLAY
@@ -305,6 +304,11 @@ music_data.x = TABS_X + 2
 music_data.y = TABS_Y
 view2.append(music_data)
 
+music_rating = Label(font, text="0", color=0xFFFFFF)
+music_rating.anchor_point = (1.0, 1.0)
+music_rating.anchored_position = (screen_width, screen_height)
+view2.append(music_rating)
+
 sensors_label = Label(font, text="Data View", color=0x03AD31)
 sensors_label.x = TABS_X
 sensors_label.y = TABS_Y
@@ -374,7 +378,6 @@ for b in buttons:
     splash.append(b)
 
 
-
 # pylint: disable=global-statement
 def switch_view(what_view):
     global view_live
@@ -428,13 +431,12 @@ text_box(
 )
 
 # text_box(feed2_label, TABS_Y, "Tap on the Icon button to meet a new friend.", 18)
-
-text_box(
-    sensors_label,
-    TABS_Y + 20,
-    "This screen can display sensor readings and tap Sound to play a WAV file.",
-    28,
-)
+# text_box(
+#     sensors_label,
+#     TABS_Y + 20,
+#     "This screen can display sensor readings and tap Sound to play a WAV file.",
+#     28,
+# )
 
 # ------------- Initialization ------------- #
 board.DISPLAY.root_group = splash
@@ -442,8 +444,28 @@ last_time = time.time()
 set_time()
 
 
+def update_rating(rating: int=0):
+    """ update the rating """
+    if rating <3:
+        music_rating.color = 0xFF0000 # red
+    elif rating <5:
+        music_rating.color = 0xFF8000 # orange
+    elif rating == 5:
+        music_rating.color = 0xFFFF00 # yellow
+    elif rating == 6:
+        music_rating.color = 0x00FF00 # green
+    elif rating == 7:
+        music_rating.color = 0x0000FF # blue
+    elif rating == 8:
+        music_rating.color = 0x4B0082 # indigo
+    elif rating > 8:
+        music_rating.color = 0x8000FF # violet
+    music_rating.text = str(rating)
+
+
 def update_music():
     music_info = get_music("json")
+
     #text = pyportal.wrap_nicely(string, max_chars)
 
     text_height = Label(font, text="M", color=0x03AD31)
@@ -452,11 +474,15 @@ def update_music():
     music_data.text = ""  # Odd things happen without this
     music_data.y = int(glyph_box[3] / 2) + TABS_Y + 20
     music_data.color = 0x2E2E2E
-    music_data.text = (
-        music_info['title'] + "\n" + 
-        music_info['artist'] + "\n" +
-        music_info['album'] + " "  + music_info['year']
-        )
+    if music_info:
+        music_data.text = (
+            music_info['title'] + "\n" + 
+            music_info['artist'] + "\n" +
+            music_info['album'] + " "  + music_info['year']
+            )
+        update_rating(music_info['listener_rating'])
+    else:
+        music_data.text = "Loading error"
 
 # ------------- Code Loop ------------- #
 while True:
@@ -473,10 +499,10 @@ while True:
     # Only update music data at specified interval (default 30 seconds)
     if interval_elapsed(30):
         update_music()
-        if view_live == 1:
+        if view_live != 2:
             switch_view(2)
-        else:
-            switch_view(1)
+        # else:
+        #     switch_view(1)
 
 #    time.sleep(0.1)  # Short sleep for responsive UI
 
