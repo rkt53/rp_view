@@ -193,8 +193,7 @@ def get_music(response_type: str = 'str') -> str:
     return
 
 
-last_time = time.time()
-set_time()
+last_time = 0
 
 def interval_elapsed(interval: int = 30):
     """ check if interval elapsed """
@@ -242,14 +241,21 @@ TAB_BUTTON_WIDTH = int(screen_width / 3)
 # BIG_BUTTON_Y = int(screen_height - BIG_BUTTON_HEIGHT)
 
 # Initializes the display touch screen area
+# ts = adafruit_touchscreen.Touchscreen(
+#     board.TOUCH_YD,
+#     board.TOUCH_YU,
+#     board.TOUCH_XR,
+#     board.TOUCH_XL,
+#     calibration=((5200, 59000), (5800, 57000)),
+#     size=(screen_width, screen_height),
+# )
+
 ts = adafruit_touchscreen.Touchscreen(
-    board.TOUCH_YD,
-    board.TOUCH_YU,
-    board.TOUCH_XR,
-    board.TOUCH_XL,
+    board.TOUCH_XL, board.TOUCH_XR,
+    board.TOUCH_YD, board.TOUCH_YU,
     calibration=((5200, 59000), (5800, 57000)),
-    size=(screen_width, screen_height),
-)
+    size=(320, 240))
+
 
 # ------------- WifI Connection ------------- #
 ssid = getenv("CIRCUITPY_WIFI_SSID")
@@ -432,7 +438,8 @@ text_box(
 
 # ------------- Initialization ------------- #
 board.DISPLAY.root_group = splash
-
+last_time = time.time()
+set_time()
 
 
 # ------------- Code Loop ------------- #
@@ -442,11 +449,25 @@ while True:
     sensor_data.text = "Touch: {}\nLight: {}\nTemp: {:.0f}°F".format(
         touch, light, get_Temperature(adt)
         )
-    time_data.text = "Time {}.".format(get_time())
+
+    text_box(
+        time_data,
+        TABS_Y + 20,
+        "Time {}.".format(get_time()),
+        30)
 
     # Only update music data at specified interval (default 30 seconds)
     if interval_elapsed(30):
         music_data.text = get_music("simple")
+        text_box(
+            music_data,
+            TABS_Y + 20,
+            get_music("simple"),
+            30)
+        if view_live == 1:
+            switch_view(2)
+        else:
+            switch_view(1)
 
     time.sleep(0.1)  # Short sleep for responsive UI
 
