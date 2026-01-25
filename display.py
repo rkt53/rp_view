@@ -7,7 +7,7 @@ import board
 import microcontroller
 import displayio
 import busio
-import neopixel
+# import neopixel
 
 import adafruit_adt7410
 import adafruit_touchscreen
@@ -442,34 +442,43 @@ last_time = time.time()
 set_time()
 
 
+def update_music():
+    music_info = get_music("json")
+    #text = pyportal.wrap_nicely(string, max_chars)
+
+    text_height = Label(font, text="M", color=0x03AD31)
+    text_height.text = "M\nM\nM\n"  # Odd things happen without this
+    glyph_box = text_height.bounding_box
+    music_data.text = ""  # Odd things happen without this
+    music_data.y = int(glyph_box[3] / 2) + TABS_Y + 20
+    music_data.color = 0x2E2E2E
+    music_data.text = (
+        music_info['title'] + "\n" + 
+        music_info['artist'] + "\n" +
+        music_info['album'] + " "  + music_info['year']
+        )
+
 # ------------- Code Loop ------------- #
 while True:
     touch = ts.touch_point
     light = light_sensor.value
+
     sensor_data.text = "Touch: {}\nLight: {}\nTemp: {:.0f}°F".format(
         touch, light, get_Temperature(adt)
         )
 
-    text_box(
-        time_data,
-        TABS_Y + 20,
-        "Time {}.".format(get_time()),
-        30)
+    time_data.text = "Time {}".format(get_time())
+
 
     # Only update music data at specified interval (default 30 seconds)
     if interval_elapsed(30):
-        music_data.text = get_music("simple")
-        text_box(
-            music_data,
-            TABS_Y + 20,
-            get_music("simple"),
-            30)
+        update_music()
         if view_live == 1:
             switch_view(2)
         else:
             switch_view(1)
 
-    time.sleep(0.1)  # Short sleep for responsive UI
+#    time.sleep(0.1)  # Short sleep for responsive UI
 
 
 
@@ -486,6 +495,7 @@ while True:
                         pass
                 if i == 1 and view_live != 2:  # only if view2 is visible
                     # pyportal.play_file(soundTab)
+                    update_music()
                     switch_view(2)
                     while ts.touch_point:
                         pass
