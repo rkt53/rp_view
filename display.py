@@ -227,7 +227,7 @@ except ValueError:
 
 # ------------- Screen Setup ------------- #
 pyportal = PyPortal()
-pyportal.set_background("/images/loading.bmp")  # Display an image until the loop starts
+# pyportal.set_background("/images/loading.bmp")  # Display an image until the loop starts
 
 # Touchscreen setup  
 display = board.DISPLAY
@@ -283,6 +283,8 @@ view2.append(icon_group)
 # Set the font and preload letters
 font = bitmap_font.load_font("/fonts/Helvetica-Bold-16.bdf")
 font.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
+font_large = bitmap_font.load_font("/fonts/helvB24.bdf")
+font_large.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
 
 # Text Label Objects
 time_data = Label(font, text="Time Data", color=0xE39300)
@@ -295,9 +297,13 @@ music_data.x = TABS_X + 2
 music_data.y = TABS_Y
 view2.append(music_data)
 
-music_rating = Label(font, text="0", color=0xFFFFFF)
+music_rating = Label(font_large, text="0", color=0xFFFFFF, 
+    padding_right=8,
+    padding_top=8,
+    padding_bottom=8,
+    padding_left=8,)
 music_rating.anchor_point = (1.0, 1.0)
-music_rating.anchored_position = (SCREEN_WIDTH - 20, SCREEN_HEIGHT - 20)
+music_rating.anchored_position = (SCREEN_WIDTH - 40, SCREEN_HEIGHT - 40)
 view2.append(music_rating)
 
 sensors_label = Label(font, text="Data View", color=0x03AD31)
@@ -439,18 +445,25 @@ def update_rating(rating):
     """ update the rating """
     if rating < 3:
         music_rating.color = 0xFF0000  # red
+        music_rating.background_color = 0xFFFF00
     elif rating < 4:
         music_rating.color = 0xFF8000  # orange
+        music_rating.background_color = 0xFF0000
     elif rating < 5:
         music_rating.color = 0xFFFF00  # yellow
+        music_rating.background_color = 0x0000EE
     elif rating < 6:
         music_rating.color = 0x00FF00  # green
+        music_rating.background_color = 0x0000FF
     elif rating < 7:
         music_rating.color = 0x0000FF  # blue
+        music_rating.background_color = 0xFFFF00
     elif rating < 8:
         music_rating.color = 0x4B0082  # indigo
+        music_rating.background_color = 0xFFFF00
     elif rating < 9:
         music_rating.color = 0x8000FF  # violet
+        music_rating.background_color = 0xFFFF00
     music_rating.text = str(rating)
 
 
@@ -464,7 +477,7 @@ def update_music():
     glyph_box = text_height.bounding_box
     music_data.text = ""  # Odd things happen without this
     music_data.y = int(glyph_box[3] / 2) + TABS_Y + 20
-    music_data.color = 0x2E2E2E
+    music_data.color = 0xFF7E00
     if music_info:
         music_data.text = (
             music_info['title'] + "\n" + 
