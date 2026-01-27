@@ -7,6 +7,7 @@ import board
 import microcontroller
 import displayio
 import busio
+import gc
 # import neopixel
 
 import adafruit_adt7410
@@ -59,6 +60,7 @@ switch_state = 0
 
 # For add ons
 TESTING = False
+TEXT_OUTPUT_MODE = False  # Set to True for console text output instead of display
 TIME_API = "http://worldtimeapi.org/api/ip"
 RP_URL = "https://api.radioparadise.com/api/nowplaying_list_v2022?chan=0&source=The%20Main%20Mix&player_id=&sync_id=chan_0&type=channel&mode=wip-channel&list_num=4"
 WEATHER = "https://api.weather.gov/stations/KOWD/observations/latest"
@@ -154,17 +156,23 @@ def get_json(json_url: str, error_msg: str):
     """ simplify getting the URL
     """
     attempt = 0
+    gc.collect()
     while attempt < 3:
-        try:
-            # print("Fetching json from", json_url)
-            response = pyportal.network.requests.get(json_url)
-            result = response.json()
-            response.close()
-            return result
-        except OSError as e:
-            print(f"Failed to {error_msg} retrying {e}\n")
-            attempt += 1
-            continue
+        response = pyportal.network.requests.get(json_url)
+        result = response.json()
+        response.close()
+        attempt += 1
+        return result
+        # try:
+        #     # print("Fetching json from", json_url)
+        #     response = pyportal.network.requests.get(json_url)
+        #     result = response.json()
+        #     response.close()
+        #     return result
+        # except OSError as e:
+        #     print(f"Failed to {error_msg} retrying {e}\n")
+        #     attempt += 1
+        #     continue
 
 
 def set_time():
@@ -229,22 +237,15 @@ except ValueError:
 pyportal = PyPortal()
 # pyportal.set_background("/images/loading.bmp")  # Display an image until the loop starts
 
-# Touchscreen setup  
-display = board.DISPLAY
-# display.rotation = 270  # [ Rotate 270 ]
-# SCREEN_WIDTH = 240
-# SCREEN_HEIGHT = 320
-# reverse orientation
-
-set_backlight(0.3)
-
-
-
-ts = adafruit_touchscreen.Touchscreen(
-    board.TOUCH_XL, board.TOUCH_XR,
-    board.TOUCH_YD, board.TOUCH_YU,
-    calibration=((5200, 59000), (5800, 57000)),
-    size=(320, 240))
+if not TEXT_OUTPUT_MODE:
+    # Touchscreen setup  
+    display = board.DISPLAY
+    set_backlight(0.3)
+    ts = adafruit_touchscreen.Touchscreen(
+        board.TOUCH_XL, board.TOUCH_XR,
+        board.TOUCH_YD, board.TOUCH_YU,
+        calibration=((5200, 59000), (5800, 57000)),
+        size=(320, 240))
 
 
 # ------------- WifI Connection ------------- #
@@ -269,9 +270,10 @@ view2 = displayio.Group()  # Group for View 2 objects
 view3 = displayio.Group()  # Group for View 3 objects
 
 # ------------- Setup for Images ------------- #
-bg_group = displayio.Group()
-splash.append(bg_group)
-set_image(bg_group, "/images/BGimage.bmp")
+if not TEXT_OUTPUT_MODE:
+    bg_group = displayio.Group()
+    splash.append(bg_group) 
+    set_image(bg_group, "/images/BGimage.bmp")
 
 icon_group = displayio.Group()
 icon_group.x = 180
@@ -436,7 +438,8 @@ text_box(
 # )
 
 # ------------- Initialization ------------- #
-board.DISPLAY.root_group = splash
+if not TEXT_OUTPUT_MODE:
+    board.DISPLAY.root_group = splash
 last_time = time.time()
 set_time()
 
@@ -470,23 +473,34 @@ def update_rating(rating):
 def update_music():
     music_info = get_music("json")
 
-    #text = pyportal.wrap_nicely(string, max_chars)
-
-    text_height = Label(font, text="M", color=0x03AD31)
-    text_height.text = "M\nM\nM\n"  # Odd things happen without this
-    glyph_box = text_height.bounding_box
-    music_data.text = ""  # Odd things happen without this
-    music_data.y = int(glyph_box[3] / 2) + TABS_Y + 20
-    music_data.color = 0xFF7E00
-    if music_info:
-        music_data.text = (
-            music_info['title'] + "\n" + 
-            music_info['artist'] + "\n" +
-            music_info['album'] + " "  + music_info['year']
-            )
-        update_rating(music_info['listener_rating'])
+    if TEXT_OUTPUT_MODE:
+        # Console text output mode
+        if music_info:
+            print("=" * 50)
+            print(f"Title:  {music_info['title']}")
+            print(f"Artist: {music_info['artist']}")
+            print(f"Album:  {music_info['album']} ({music_info['year']})")
+            print(f"Rating: {music_info['listener_rating']}")
+            print("=" * 50)
+        else:
+            print("Music loading error")
     else:
-        music_data.text = "Loading error"
+        # PyPortal display output mode
+        text_height = Label(font, text="M", color=0x03AD31)
+        text_height.text = "M\nM\nM\n"  # Odd things happen without this
+        glyph_box = text_height.bounding_box
+        music_data.text = ""  # Odd things happen without this
+        music_data.y = int(glyph_box[3] / 2) + TABS_Y + 20
+        music_data.color = 0xFF7E00
+        if music_info:
+            music_data.text = (
+                music_info['title'] + "\n" +
+                music_info['artist'] + "\n" +
+                music_info['album'] + " "  + music_info['year']
+                )
+            update_rating(music_info['listener_rating'])
+        else:
+            music_data.text = "Loading error"
 
 # ------------- Code Loop ------------- #
 while True:
@@ -503,7 +517,7 @@ while True:
     # Only update music data at specified interval (default 30 seconds)
     if interval_elapsed(30):
         update_music()
-        if view_live != 2:
+        if view_live != 2 and not TEXT_OUTPUT_MODE:
             switch_view(2)
         # else:
         #     switch_view(1)
@@ -513,7 +527,7 @@ while True:
 
 
     # ------------- Handle Button Press Detection  ------------- #
-    if touch:  # Only do this if the screen is touched
+    if touch and not TEXT_OUTPUT_MODE:  # Only do this if the screen is touched
         # loop with buttons using enumerate() to number each button group as i
         for i, b in enumerate(buttons):
             if b.contains(touch):  # Test each button to see if it was pressed
