@@ -34,9 +34,17 @@ BLUE = 0x0000FF
 PURPLE = 0xFF00FF
 BLACK = 0x000000
 
+SCREEN_WIDTH = 320
+SCREEN_HEIGHT = 240
+
+# We want three buttons across the top of the screen
+TABS_Y = 70  # previously 40
+TAB_BUTTON_WIDTH = int(SCREEN_WIDTH / 3)
+
+
 # Default Label styling
 TABS_X = 0
-TABS_Y = 15
+TABS_Y = 70
 
 # Default button styling:
 BUTTON_HEIGHT = 40
@@ -150,7 +158,9 @@ def get_json(json_url: str, error_msg: str):
         try:
             # print("Fetching json from", json_url)
             response = pyportal.network.requests.get(json_url)
-            return response.json()
+            result = response.json()
+            response.close()
+            return result
         except OSError as e:
             print(f"Failed to {error_msg} retrying {e}\n")
             attempt += 1
@@ -222,32 +232,13 @@ pyportal.set_background("/images/loading.bmp")  # Display an image until the loo
 # Touchscreen setup  
 display = board.DISPLAY
 # display.rotation = 270  # [ Rotate 270 ]
-# screen_width = 240
-# screen_height = 320
+# SCREEN_WIDTH = 240
+# SCREEN_HEIGHT = 320
 # reverse orientation
-screen_width = 320
-screen_height = 240
+
 set_backlight(0.3)
 
-# We want three buttons across the top of the screen
-TAB_BUTTON_Y = 0
-TAB_BUTTON_HEIGHT = 40  # previously 40
-TAB_BUTTON_WIDTH = int(screen_width / 3)
 
-# We want two big buttons at the bottom of the screen
-# BIG_BUTTON_HEIGHT = int(screen_height / 3.2)
-# BIG_BUTTON_WIDTH = int(screen_width / 2)
-# BIG_BUTTON_Y = int(screen_height - BIG_BUTTON_HEIGHT)
-
-# Initializes the display touch screen area
-# ts = adafruit_touchscreen.Touchscreen(
-#     board.TOUCH_YD,
-#     board.TOUCH_YU,
-#     board.TOUCH_XR,
-#     board.TOUCH_XL,
-#     calibration=((5200, 59000), (5800, 57000)),
-#     size=(screen_width, screen_height),
-# )
 
 ts = adafruit_touchscreen.Touchscreen(
     board.TOUCH_XL, board.TOUCH_XR,
@@ -306,7 +297,7 @@ view2.append(music_data)
 
 music_rating = Label(font, text="0", color=0xFFFFFF)
 music_rating.anchor_point = (1.0, 1.0)
-music_rating.anchored_position = (screen_width, screen_height)
+music_rating.anchored_position = (SCREEN_WIDTH - 20, SCREEN_HEIGHT - 20)
 view2.append(music_rating)
 
 sensors_label = Label(font, text="Data View", color=0x03AD31)
@@ -328,7 +319,7 @@ button_view1 = Button(
     x=0,  # Start at furthest left
     y=0,  # Start at top
     width=TAB_BUTTON_WIDTH,  # Calculated width
-    height=TAB_BUTTON_HEIGHT,  # Static height
+    height=TABS_Y,  # Static height
     label="Time",
     label_font=font,
     label_color=0xFF7E00,
@@ -344,7 +335,7 @@ button_view2 = Button(
     x=TAB_BUTTON_WIDTH,  # Start after width of a button
     y=0,
     width=TAB_BUTTON_WIDTH,
-    height=TAB_BUTTON_HEIGHT,
+    height=TABS_Y,
     label="Music",
     label_font=font,
     label_color=0xFF7E00,
@@ -360,7 +351,7 @@ button_view3 = Button(
     x=TAB_BUTTON_WIDTH * 2,  # Start after width of 2 buttons
     y=0,
     width=TAB_BUTTON_WIDTH,
-    height=TAB_BUTTON_HEIGHT,
+    height=TABS_Y,
     label="Sensor",
     label_font=font,
     label_color=0xFF7E00,
@@ -444,22 +435,22 @@ last_time = time.time()
 set_time()
 
 
-def update_rating(rating: int=0):
+def update_rating(rating):
     """ update the rating """
-    if rating <3:
-        music_rating.color = 0xFF0000 # red
-    elif rating <5:
-        music_rating.color = 0xFF8000 # orange
-    elif rating == 5:
-        music_rating.color = 0xFFFF00 # yellow
-    elif rating == 6:
-        music_rating.color = 0x00FF00 # green
-    elif rating == 7:
-        music_rating.color = 0x0000FF # blue
-    elif rating == 8:
-        music_rating.color = 0x4B0082 # indigo
-    elif rating > 8:
-        music_rating.color = 0x8000FF # violet
+    if rating < 3:
+        music_rating.color = 0xFF0000  # red
+    elif rating < 4:
+        music_rating.color = 0xFF8000  # orange
+    elif rating < 5:
+        music_rating.color = 0xFFFF00  # yellow
+    elif rating < 6:
+        music_rating.color = 0x00FF00  # green
+    elif rating < 7:
+        music_rating.color = 0x0000FF  # blue
+    elif rating < 8:
+        music_rating.color = 0x4B0082  # indigo
+    elif rating < 9:
+        music_rating.color = 0x8000FF  # violet
     music_rating.text = str(rating)
 
 
