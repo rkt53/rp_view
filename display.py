@@ -38,14 +38,9 @@ BLACK = 0x000000
 SCREEN_WIDTH = 320
 SCREEN_HEIGHT = 240
 
-# We want three buttons across the top of the screen
+TABS_X = 0
 TABS_Y = 70  # previously 40
 TAB_BUTTON_WIDTH = int(SCREEN_WIDTH / 3)
-
-
-# Default Label styling
-TABS_X = 0
-TABS_Y = 70
 
 # Default button styling:
 BUTTON_HEIGHT = 40
@@ -78,13 +73,6 @@ def set_backlight(val):
     board.DISPLAY.brightness = val
 
 
-# Helper for cycling through a number set of 1 to x.
-def numberUP(num, max_val):
-    num += 1
-    if num <= max_val:
-        return num
-    else:
-        return 1
 
 
 # Set visibility of layer
@@ -157,12 +145,21 @@ def get_json(json_url: str, error_msg: str):
     """
     attempt = 0
     gc.collect()
-    while attempt < 3:
-        response = pyportal.network.requests.get(json_url)
-        result = response.json()
-        response.close()
-        attempt += 1
-        return result
+    while attempt < 4:
+        try:
+            response = pyportal.network.requests.get(json_url)
+            result = response.json()
+            response.close()
+            return result
+        except TimeoutError as e:
+            time_now = get_time()
+            print("Time {}, Url {}\n Timeout error {}",
+                  time_now, json_url, e)
+            if attempt < 4:
+                import sys
+                sys.exit()
+            attempt += 1
+
         # try:
         #     # print("Fetching json from", json_url)
         #     response = pyportal.network.requests.get(json_url)
@@ -208,7 +205,7 @@ def get_music(response_type: str = 'str') -> str:
             return (f"{item['title']} {item['artist']} {item['album']}")
         else:
             return item
-    return
+    return "Error"
 
 
 last_time = 0
@@ -372,7 +369,7 @@ button_view3 = Button(
 buttons.append(button_view3)  # adding this button to the buttons group
 
 
-# Add all of the main buttons to the splash Group
+# Add main buttons to the splash Group
 for b in buttons:
     splash.append(b)
 
@@ -410,7 +407,7 @@ def switch_view(what_view):
 
 # pylint: enable=global-statement
 
-# Set veriables and startup states
+# Set variables and startup states
 button_view1.selected = False
 button_view2.selected = True
 button_view3.selected = True
