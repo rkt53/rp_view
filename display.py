@@ -19,11 +19,54 @@ from adafruit_pyportal import PyPortal
 from analogio import AnalogIn
 
 # -- additional imports -- #
-# import adafruit_connection_manager  # -- appear unused
-# import adafruit_requests.  # -- appear unused
+import adafruit_connection_manager  # -- appear unused
+import adafruit_requests  # -- appear unused
 import rtc
 from os import getenv
 
+from adafruit_esp32spi import adafruit_esp32spi
+from adafruit_esp32spi.adafruit_esp32spi_wifimanager import WiFiManager
+import neopixel
+from digitalio import DigitalInOut
+# Get wifi details and more from a settings.toml file
+# tokens used by this Demo: CIRCUITPY_WIFI_SSID, CIRCUITPY_WIFI_PASSWORD
+
+
+# If you are using a board with pre-defined ESP32 Pins:
+esp32_cs = DigitalInOut(board.ESP_CS)
+esp32_ready = DigitalInOut(board.ESP_BUSY)
+esp32_reset = DigitalInOut(board.ESP_RESET)
+
+# If you have an externally connected ESP32:
+# esp32_cs = DigitalInOut(board.D9)
+# esp32_ready = DigitalInOut(board.D10)
+# esp32_reset = DigitalInOut(board.D5)
+
+# Secondary (SCK1) SPI used to connect to WiFi board on Arduino Nano Connect RP2040
+if "SCK1" in dir(board):
+    spi = busio.SPI(board.SCK1, board.MOSI1, board.MISO1)
+else:
+    spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
+esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
+
+"""Use below for Most Boards"""
+status_pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2)
+"""Uncomment below for ItsyBitsy M4"""
+# status_pixel = dotstar.DotStar(board.APA102_SCK, board.APA102_MOSI, 1, brightness=0.2)
+"""Uncomment below for an externally defined RGB LED (including Arduino Nano Connect)"""
+# import adafruit_rgbled
+# from adafruit_esp32spi import PWMOut
+# RED_LED = PWMOut.PWMOut(esp, 26)
+# GREEN_LED = PWMOut.PWMOut(esp, 27)
+# BLUE_LED = PWMOut.PWMOut(esp, 25)
+# status_pixel = adafruit_rgbled.RGBLED(RED_LED, BLUE_LED, GREEN_LED)
+
+# ------------- WifI Connection ------------- #
+
+ssid = getenv("CIRCUITPY_WIFI_SSID")
+password = getenv("CIRCUITPY_WIFI_PASSWORD")
+
+wifi = WiFiManager(esp, ssid, password, status_pixel=status_pixel)
 # ------------- Constants ------------- #
 
 # Hex Colors
@@ -39,12 +82,8 @@ SCREEN_WIDTH = 320
 SCREEN_HEIGHT = 240
 
 TABS_X = 0
-TABS_Y = 70  # previously 40
+TABS_Y = 40  # previously 40
 TAB_BUTTON_WIDTH = int(SCREEN_WIDTH / 3)
-
-# Default button styling:
-BUTTON_HEIGHT = 40
-BUTTON_WIDTH = 80
 
 # Default State
 view_live = 1
@@ -71,8 +110,6 @@ def set_backlight(val):
     except AttributeError:
         pass
     board.DISPLAY.brightness = val
-
-
 
 
 # Set visibility of layer
@@ -109,7 +146,8 @@ def set_image(group, filename):
 
 # return a reformatted string with word wrapping using PyPortal.wrap_nicely
 def text_box(target, top, string, max_chars):
-    text = pyportal.wrap_nicely(string, max_chars)
+    # text = pyportal.wrap_nicely(string, max_chars)
+    text = string
     new_text = ""
     test = ""
 
@@ -143,34 +181,10 @@ def get_time():
 def get_json(json_url: str, error_msg: str):
     """ simplify getting the URL
     """
-    attempt = 0
     gc.collect()
-    while attempt < 4:
-        try:
-            response = pyportal.network.requests.get(json_url)
-            result = response.json()
-            response.close()
-            return result
-        except TimeoutError as e:
-            time_now = get_time()
-            print("Time {}, Url {}\n Timeout error {}",
-                  time_now, json_url, e)
-            if attempt < 4:
-                import sys
-                sys.exit()
-            attempt += 1
-
-        # try:
-        #     # print("Fetching json from", json_url)
-        #     response = pyportal.network.requests.get(json_url)
-        #     result = response.json()
-        #     response.close()
-        #     return result
-        # except OSError as e:
-        #     print(f"Failed to {error_msg} retrying {e}\n")
-        #     attempt += 1
-        #     continue
-
+    # print("Using Testing path")
+    response = wifi.get(json_url)
+    return response.json()
 
 def set_time():
     """ Routine to set the time
@@ -231,7 +245,7 @@ except ValueError:
     adt = None
 
 # ------------- Screen Setup ------------- #
-pyportal = PyPortal()
+# pyportal = PyPortal()
 # pyportal.set_background("/images/loading.bmp")  # Display an image until the loop starts
 
 if not TEXT_OUTPUT_MODE:
@@ -243,21 +257,6 @@ if not TEXT_OUTPUT_MODE:
         board.TOUCH_YD, board.TOUCH_YU,
         calibration=((5200, 59000), (5800, 57000)),
         size=(320, 240))
-
-
-# ------------- WifI Connection ------------- #
-ssid = getenv("CIRCUITPY_WIFI_SSID")
-password = getenv("CIRCUITPY_WIFI_PASSWORD")
-
-print("Connecting to WiFi...")
-
-try:
-    pyportal.network.connect()
-    print("Connected to WiFi!")
-except (RuntimeError, ConnectionError) as e:
-    print(f"Failed to connect to WiFi: {e}")
-    raise
-
 
 
 # ------------- Display Groups ------------- #
@@ -280,18 +279,21 @@ view2.append(icon_group)
 
 # ---------- Text Boxes ------------- #
 # Set the font and preload letters
+# source https://github.com/olikraus/u8g2/tree/master/tools/font/bdf
+#
 font = bitmap_font.load_font("/fonts/Helvetica-Bold-16.bdf")
 font.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
 font_large = bitmap_font.load_font("/fonts/helvB24.bdf")
 font_large.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
-
+font_mid = bitmap_font.load_font("/fonts/luBS19.bdf")
+font_mid.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
 # Text Label Objects
 time_data = Label(font, text="Time Data", color=0xE39300)
 time_data.x = TABS_X + 2
 time_data.y = TABS_Y
 view1.append(time_data)
 
-music_data = Label(font, text="Music Data", color=0xFFFFFF)
+music_data = Label(font_mid, text="Music Data", color=0xFFFFFF)
 music_data.x = TABS_X + 2
 music_data.y = TABS_Y
 view2.append(music_data)
@@ -484,7 +486,7 @@ def update_music():
     else:
         # PyPortal display output mode
         text_height = Label(font, text="M", color=0x03AD31)
-        text_height.text = "M\nM\nM\n"  # Odd things happen without this
+        text_height.text = "M\n"  # Odd things happen without this
         glyph_box = text_height.bounding_box
         music_data.text = ""  # Odd things happen without this
         music_data.y = int(glyph_box[3] / 2) + TABS_Y + 20
