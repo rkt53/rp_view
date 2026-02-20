@@ -1,5 +1,6 @@
 # https://learn.adafruit.com/making-a-pyportal-user-interface-displayio/the-full-code
 # SPDX-FileCopyrightText: 2020 Richard Albritton for Adafruit Industries
+# SPDX-FileCopyrightText: 2021 ladyada for Adafruit Industries
 #
 # SPDX-License-Identifier: MIT
 import time
@@ -8,7 +9,6 @@ import microcontroller
 import displayio
 import busio
 import gc
-# import neopixel
 
 import adafruit_adt7410
 import adafruit_touchscreen
@@ -19,11 +19,36 @@ from adafruit_pyportal import PyPortal
 from analogio import AnalogIn
 
 # -- additional imports -- #
-# import adafruit_connection_manager  # -- appear unused
-# import adafruit_requests.  # -- appear unused
+import adafruit_connection_manager  # -- appear unused
+import adafruit_requests  # -- appear unused
 import rtc
 from os import getenv
 
+from adafruit_esp32spi import adafruit_esp32spi
+from adafruit_esp32spi.adafruit_esp32spi_wifimanager import WiFiManager
+import neopixel
+from digitalio import DigitalInOut
+
+# Get wifi details and more from a settings.toml file
+# tokens used by this Demo: CIRCUITPY_WIFI_SSID, CIRCUITPY_WIFI_PASSWORD
+# If you are using a board with pre-defined ESP32 Pins:
+esp32_cs = DigitalInOut(board.ESP_CS)
+esp32_ready = DigitalInOut(board.ESP_BUSY)
+esp32_reset = DigitalInOut(board.ESP_RESET)
+
+# Secondary (SCK1) SPI used to connect to WiFi board on Arduino Nano Connect RP2040
+if "SCK1" in dir(board):
+    spi = busio.SPI(board.SCK1, board.MOSI1, board.MISO1)
+else:
+    spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
+esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
+
+# ------------- WifI Connection ------------- #
+status_pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2)
+ssid = getenv("CIRCUITPY_WIFI_SSID")
+password = getenv("CIRCUITPY_WIFI_PASSWORD")
+
+wifi = WiFiManager(esp, ssid, password, status_pixel=status_pixel)
 # ------------- Constants ------------- #
 
 # Hex Colors
@@ -38,18 +63,9 @@ BLACK = 0x000000
 SCREEN_WIDTH = 320
 SCREEN_HEIGHT = 240
 
-# We want three buttons across the top of the screen
-TABS_Y = 70  # previously 40
-TAB_BUTTON_WIDTH = int(SCREEN_WIDTH / 3)
-
-
-# Default Label styling
 TABS_X = 0
-TABS_Y = 70
-
-# Default button styling:
-BUTTON_HEIGHT = 40
-BUTTON_WIDTH = 80
+TABS_Y = 40  # previously 40
+TAB_BUTTON_WIDTH = int(SCREEN_WIDTH / 3)
 
 # Default State
 view_live = 1
@@ -58,8 +74,6 @@ icon_name = "Ruby"
 button_mode = 1
 switch_state = 0
 
-# For add ons
-TESTING = False
 TEXT_OUTPUT_MODE = False  # Set to True for console text output instead of display
 #TIME_API = "http://worldtimeapi.org/api/ip"
 TIME_API = "https://time.now/developer/api/ip"
@@ -77,15 +91,6 @@ def set_backlight(val):
     except AttributeError:
         pass
     board.DISPLAY.brightness = val
-
-
-# Helper for cycling through a number set of 1 to x.
-def numberUP(num, max_val):
-    num += 1
-    if num <= max_val:
-        return num
-    else:
-        return 1
 
 
 # Set visibility of layer
@@ -110,19 +115,17 @@ def set_image(group, filename):
     print("Set image to ", filename)
     if group:
         group.pop()
-
     if not filename:
         return  # we're done, no icon desired
-
     image = displayio.OnDiskBitmap(filename)
     image_sprite = displayio.TileGrid(image, pixel_shader=image.pixel_shader)
-
     group.append(image_sprite)
 
 
 # return a reformatted string with word wrapping using PyPortal.wrap_nicely
 def text_box(target, top, string, max_chars):
-    text = pyportal.wrap_nicely(string, max_chars)
+    # text = pyportal.wrap_nicely(string, max_chars)
+    text = string
     new_text = ""
     test = ""
 
@@ -156,24 +159,22 @@ def get_time():
 def get_json(json_url: str, error_msg: str):
     """ simplify getting the URL
     """
-    attempt = 0
     gc.collect()
-    while attempt < 3:
-        response = pyportal.network.requests.get(json_url)
-        result = response.json()
-        response.close()
-        attempt += 1
-        return result
-        # try:
-        #     # print("Fetching json from", json_url)
-        #     response = pyportal.network.requests.get(json_url)
-        #     result = response.json()
-        #     response.close()
-        #     return result
-        # except OSError as e:
-        #     print(f"Failed to {error_msg} retrying {e}\n")
-        #     attempt += 1
-        #     continue
+    # print("Using Testing path")
+    attempts = 0
+    while attempts < 5:
+        try:
+            response = wifi.get(json_url)
+            return response.json()
+        except (TimeoutError,
+                RuntimeError,
+                adafruit_requests.OutOfRetries) as e:
+            if attempts == 4:
+                import supervisor
+                supervisor.reload()
+            print(f"attempt {attempts} for {error_msg}: {e}")
+            attempts += 1
+            time.sleep(2)
 
 
 def set_time():
@@ -216,10 +217,55 @@ def get_music(response_type: str = 'str') -> str:
             return (f"{item['title']} {item['artist']} {item['album']}")
         else:
             return item
-    return
+    return "Error"
+
+def get_fahrenheit(celsius: float) -> float:
+    """ convert temperature to fahrenheit"""
+    return (celsius * 9/5) + 32
+
+def get_weather() -> str:
+    """ retrieve the weather"""
+    response = get_json(WEATHER, "get weather")
+    if response:
+        try:
+            temp = response['properties']['temperature']['value']
+            temp_float = float(temp)
+            temp_far = get_fahrenheit(temp_float)
+            result = f"{temp_far:.1f} F {temp} C"
+            return result
+        except (KeyError, TypeError) as e:
+            print(f"value error {e}")
+    return "failed to get weather"
 
 
 last_time = 0
+interval_info = [0, time.time(), [10, 30]]
+
+def interval_sequence() -> tuple[bool, int]:
+    """ advance frame by set number of seconds
+        return the next interval
+        
+        interval_info[0] is the current interval
+        interval_info[1] is the last time
+        :rtype: tuple[bool, int]
+    """
+    
+    def next_interval(current_interval, last_interval):
+        if current_interval == last_interval-1:
+            return 0
+        return current_interval + 1
+    
+    global interval_info
+    interval_list = interval_info[2]
+    delta = time.time() - interval_info[1]
+    if delta > interval_list[interval_info[0]]:
+        interval_info[0] = next_interval(interval_info[0], len(interval_list))
+        interval_info[1] = time.time()
+        return True, interval_info[0]
+    return False, interval_info[0]
+        
+    # current interval is interval
+
 
 def interval_elapsed(interval: int = 30):
     """ check if interval elapsed """
@@ -242,7 +288,7 @@ except ValueError:
     adt = None
 
 # ------------- Screen Setup ------------- #
-pyportal = PyPortal()
+# pyportal = PyPortal()
 # pyportal.set_background("/images/loading.bmp")  # Display an image until the loop starts
 
 if not TEXT_OUTPUT_MODE:
@@ -254,21 +300,6 @@ if not TEXT_OUTPUT_MODE:
         board.TOUCH_YD, board.TOUCH_YU,
         calibration=((5200, 59000), (5800, 57000)),
         size=(320, 240))
-
-
-# ------------- WifI Connection ------------- #
-ssid = getenv("CIRCUITPY_WIFI_SSID")
-password = getenv("CIRCUITPY_WIFI_PASSWORD")
-
-print("Connecting to WiFi...")
-
-try:
-    pyportal.network.connect()
-    print("Connected to WiFi!")
-except (RuntimeError, ConnectionError) as e:
-    print(f"Failed to connect to WiFi: {e}")
-    raise
-
 
 
 # ------------- Display Groups ------------- #
@@ -291,18 +322,21 @@ view2.append(icon_group)
 
 # ---------- Text Boxes ------------- #
 # Set the font and preload letters
+# source https://github.com/olikraus/u8g2/tree/master/tools/font/bdf
+#
 font = bitmap_font.load_font("/fonts/Helvetica-Bold-16.bdf")
 font.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
 font_large = bitmap_font.load_font("/fonts/helvB24.bdf")
 font_large.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
-
+font_mid = bitmap_font.load_font("/fonts/luBS19.bdf")
+font_mid.load_glyphs(b"abcdefghjiklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890- ()")
 # Text Label Objects
-time_data = Label(font, text="Time Data", color=0xE39300)
+time_data = Label(font_mid, text="Time Data", color=0xE39300)
 time_data.x = TABS_X + 2
-time_data.y = TABS_Y
+time_data.y = TABS_Y + 10
 view1.append(time_data)
 
-music_data = Label(font, text="Music Data", color=0xFFFFFF)
+music_data = Label(font_mid, text="Music Data", color=0xFFFFFF)
 music_data.x = TABS_X + 2
 music_data.y = TABS_Y
 view2.append(music_data)
@@ -313,7 +347,7 @@ music_rating = Label(font_large, text="0", color=0xFFFFFF,
     padding_bottom=8,
     padding_left=8,)
 music_rating.anchor_point = (1.0, 1.0)
-music_rating.anchored_position = (SCREEN_WIDTH - 40, SCREEN_HEIGHT - 40)
+music_rating.anchored_position = (SCREEN_WIDTH - 20, SCREEN_HEIGHT - 20)
 view2.append(music_rating)
 
 sensors_label = Label(font, text="Data View", color=0x03AD31)
@@ -380,7 +414,7 @@ button_view3 = Button(
 buttons.append(button_view3)  # adding this button to the buttons group
 
 
-# Add all of the main buttons to the splash Group
+# Add main buttons to the splash Group
 for b in buttons:
     splash.append(b)
 
@@ -418,7 +452,7 @@ def switch_view(what_view):
 
 # pylint: enable=global-statement
 
-# Set veriables and startup states
+# Set variables and startup states
 button_view1.selected = False
 button_view2.selected = True
 button_view3.selected = True
@@ -430,12 +464,12 @@ layerVisibility("hide", splash, view2)
 layerVisibility("hide", splash, view3)
 
 # Update out Labels with display text.
-text_box(
-    time_data,
-    TABS_Y + 20,
-    "Time {}.".format(get_time()),
-    30,
-)
+# text_box(
+#     time_data,
+#     TABS_Y + 5,
+#     get_time(),
+#     30,
+# )
 
 # text_box(feed2_label, TABS_Y, "Tap on the Icon button to meet a new friend.", 18)
 # text_box(
@@ -445,12 +479,10 @@ text_box(
 #     28,
 # )
 
-# ------------- Initialization ------------- #
-if not TEXT_OUTPUT_MODE:
-    board.DISPLAY.root_group = splash
-last_time = time.time()
-set_time()
 
+def update_weather_panel():
+    weather_text = get_weather()
+    time_data.text = get_time() + "\n" + weather_text
 
 def update_rating(rating):
     """ update the rating """
@@ -478,7 +510,7 @@ def update_rating(rating):
     music_rating.text = str(rating)
 
 
-def update_music():
+def update_music() -> None:
     music_info = get_music("json")
 
     if TEXT_OUTPUT_MODE:
@@ -495,7 +527,7 @@ def update_music():
     else:
         # PyPortal display output mode
         text_height = Label(font, text="M", color=0x03AD31)
-        text_height.text = "M\nM\nM\n"  # Odd things happen without this
+        text_height.text = "M\n"  # Odd things happen without this
         glyph_box = text_height.bounding_box
         music_data.text = ""  # Odd things happen without this
         music_data.y = int(glyph_box[3] / 2) + TABS_Y + 20
@@ -510,6 +542,13 @@ def update_music():
         else:
             music_data.text = "Loading error"
 
+# ------------- Initialization ------------- #
+if not TEXT_OUTPUT_MODE:
+    board.DISPLAY.root_group = splash
+last_time = time.time()
+set_time()
+update_weather_panel()
+
 # ------------- Code Loop ------------- #
 while True:
     touch = ts.touch_point
@@ -519,14 +558,22 @@ while True:
         touch, light, get_Temperature(adt)
         )
 
-    time_data.text = "Time {}".format(get_time())
+    #time_data.text = "Time {}".format(get_time())
 
+    interval_advance, next_panel = interval_sequence()
+    if interval_advance:
+        if next_panel == 0:
+            update_weather_panel()
+            switch_view(1)
+        elif next_panel == 1:
+            update_music()
+            switch_view(2)
 
     # Only update music data at specified interval (default 30 seconds)
-    if interval_elapsed(30):
-        update_music()
-        if view_live != 2 and not TEXT_OUTPUT_MODE:
-            switch_view(2)
+    # if interval_elapsed(30):
+    #     update_music()
+    #     if view_live != 2 and not TEXT_OUTPUT_MODE:
+    #         switch_view(2)
         # else:
         #     switch_view(1)
 
