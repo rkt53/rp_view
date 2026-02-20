@@ -61,7 +61,8 @@ switch_state = 0
 # For add ons
 TESTING = False
 TEXT_OUTPUT_MODE = False  # Set to True for console text output instead of display
-TIME_API = "http://worldtimeapi.org/api/ip"
+#TIME_API = "http://worldtimeapi.org/api/ip"
+TIME_API = "https://time.now/developer/api/ip"
 RP_URL = "https://api.radioparadise.com/api/nowplaying_list_v2022?chan=0&source=The%20Main%20Mix&player_id=&sync_id=chan_0&type=channel&mode=wip-channel&list_num=4"
 WEATHER = "https://api.weather.gov/stations/KOWD/observations/latest"
 
@@ -180,19 +181,26 @@ def set_time():
     """
 
     json = get_json(TIME_API, "get time")
-    current_time = json["datetime"]
-    the_date, the_time = current_time.split("T")
-    year, month, mday = (int(x) for x in the_date.split("-"))
-    the_time = the_time.split(".")[0]
-    hours, minutes, seconds = (int(x) for x in the_time.split(":"))
-    year_day = json["day_of_year"]
-    week_day = json["day_of_week"]
-    is_dst = json["dst"]
+    if not json:
+        print("Failed to get time")
+        return
+    try:
+        current_time = json["datetime"]
+        the_date, the_time = current_time.split("T")
+        year, month, mday = (int(x) for x in the_date.split("-"))
+        the_time = the_time.split(".")[0]
+        hours, minutes, seconds = (int(x) for x in the_time.split(":"))
+        year_day = json["day_of_year"]
+        week_day = json["day_of_week"]
+        is_dst = json["dst"]
 
-    now = time.struct_time((year, month, mday, hours, minutes, seconds, week_day, year_day, is_dst))
-    print(now)
-    the_rtc = rtc.RTC()
-    the_rtc.datetime = now
+        now = time.struct_time((year, month, mday, hours, minutes, seconds, week_day, year_day, is_dst))
+        print(now)
+        the_rtc = rtc.RTC()
+        the_rtc.datetime = now
+    except Exception as e:
+        print(f"set_error: error occurred: {e}")
+        print("Failed to get time")
 
 
 def get_music(response_type: str = 'str') -> str:
